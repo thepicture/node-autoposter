@@ -38,7 +38,7 @@ const updateThreadNumbers = async () => {
     .map((page) => page.threads)
     .reduce((arr1, arr2) => [...arr1, ...arr2], [])
     .map((thread) => thread.no);
-  threadNumbers = threadNumbers.slice(0, 20);
+  threadNumbers = threadNumbers.slice(0, threadNumbers.length - 8);
   if (isFirstRun) {
     isFirstRun = false;
     postPhrase();
