@@ -1,5 +1,6 @@
 require("dotenv").config({ path: `.env.local` });
 const { httpsOverHttp } = require("tunnel");
+const { decode } = require("html-entities");
 const tunnel = httpsOverHttp({
   proxy: {
     host: "localhost",
@@ -7,6 +8,7 @@ const tunnel = httpsOverHttp({
   },
 });
 const _axios = require("axios").default;
+let isFirstRun = true;
 
 const axios = _axios.create({
   httpsAgent: tunnel,
@@ -14,22 +16,104 @@ const axios = _axios.create({
 });
 
 const data = require("../data/data.json");
+const phrases = require("../data/phrases.json");
 
-const THREADS_UPDATE_INTERVAL_SECONDS = 60;
-const POST_INTERVAL_SECONDS = 60 * 2;
+const THREADS_UPDATE_INTERVAL_SECONDS = 60 * 3;
+const POST_INTERVAL_SECONDS = 10 * 2;
 
 let threadNumbers = [];
+let _pages;
 
 const updateThreadNumbers = async () => {
   if (!process.env.CATALOG_URL) {
     return;
   }
+  console.log("[autoposter] get pages...");
   const response = await axios.get(process.env.CATALOG_URL);
+  console.log("[autoposter] got pages. reading them.");
   const pages = response.data;
+  console.log("[autoposter] got " + pages.length + " pages");
+  _pages = pages;
   threadNumbers = pages
     .map((page) => page.threads)
     .reduce((arr1, arr2) => [...arr1, ...arr2], [])
     .map((thread) => thread.no);
+  threadNumbers = threadNumbers.slice(0, 20);
+  if (isFirstRun) {
+    isFirstRun = false;
+    postPhrase();
+  }
+};
+
+const postPhrase = async () => {
+  console.info("[autoposter] starting to post a phrase...");
+  if (threadNumbers.length === 0) {
+    return;
+  }
+  if (!process.env.POST_URL) {
+    return;
+  }
+  const phrase = phrases[Math.floor(Math.random() * phrases.length)].split("");
+  let antiSpamFilteredPhrase = "";
+  for (let i = 0; i < phrase.length; ++i) {
+    antiSpamFilteredPhrase += phrase[i].repeat(
+      Math.floor(Math.random() * 2) + 1
+    );
+
+    if (typeof phrase[i + 1] !== "undefined" && phrase[i + 1] != " ") {
+      if (Math.random() > 0.8) {
+        antiSpamFilteredPhrase += Math.random() > 0.5 ? "," : ".";
+      }
+    }
+
+    if (Math.random() > 0.8) {
+      antiSpamFilteredPhrase += " ";
+    }
+  }
+  if (Math.random() > 0.5) {
+    antiSpamFilteredPhrase += ".";
+  }
+  if (Math.random() > 0.5) {
+    antiSpamFilteredPhrase =
+      antiSpamFilteredPhrase[0].toUpperCase() + antiSpamFilteredPhrase.slice(1);
+  }
+  console.info(
+    '[autoposter] posting phrase "' + antiSpamFilteredPhrase + '"...'
+  );
+  if (!process.env.USER_AGENT) {
+    return;
+  }
+
+  const threadNumber =
+    threadNumbers[Math.floor(Math.random() * threadNumbers.length)];
+
+  const postData = {
+    key: null,
+    board: "an",
+    thread: String(threadNumber),
+    post: {
+      name: "",
+      comment: antiSpamFilteredPhrase,
+      email: Math.random() > 0.2 ? "sage" : "",
+      file: {},
+      spoiler: false,
+      ghost: false,
+    },
+    features: {
+      tries: "",
+      newHash: false,
+      filterBypass: 0,
+      spoilerSprinkler: "",
+      useCookie: false,
+    },
+  };
+  _axios.post(process.env.POST_URL, postData);
+  console.info(
+    "[autoposter] request posting phrase " +
+      antiSpamFilteredPhrase +
+      " in thread " +
+      threadNumber
+  );
 };
 
 const post = async () => {
@@ -75,7 +159,7 @@ const post = async () => {
     post: {
       name: "",
       comment: "",
-      email: "",
+      email: "sage",
       file: {
         mime: "image/jpeg",
         name: +new Date() + ".jpg",
@@ -109,7 +193,7 @@ setInterval(() => {
 }, 1000 * THREADS_UPDATE_INTERVAL_SECONDS);
 setInterval(() => {
   try {
-    post();
+    postPhrase();
   } catch (error) {
     console.error("[autoposter] " + error);
   }
